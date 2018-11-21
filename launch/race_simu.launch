@@ -1,0 +1,17 @@
+<launch>
+  <arg name="x_pos" default="0.245"/>
+  <arg name="y_pos" default="-1.787"/>
+  <arg name="z_pos" default="0"/>  
+
+  <include file="$(find turtlebot3_gazebo)/launch/turtlebot3_autorace.launch">
+      <arg name="x_pos" value="$(arg x_pos)"/>
+      <arg name="y_pos" value="$(arg y_pos)"/>
+      <arg name="z_pos" value="$(arg z_pos)"/>  
+  </include>
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="50.0" />
+    <!-- <param name="tf_prefix" value="$(arg multi_robot_name)"/> -->
+  </node>
+  
+</launch>
