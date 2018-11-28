@@ -56,14 +56,22 @@ def getI2P():
 def getWorldPos(u,v):
     point = [u,v,1]    
     result = np.dot(I2P, point)
-    result /= result[2]
+    result /= result[3]
     return result[0],result[1]
 
 def world_to_grid_coord(x, y, map_info):
-	res = map_info.resolution
-	x0 = int((x - map_info.origin.position.x)/res)
-	y0 = int((y - map_info.origin.position.y)/res)
-	return (x0, y0) 
+    res = map_info.resolution
+    x0 = int((x - map_info.origin.position.x)/res)
+    y0 = int((y - map_info.origin.position.y)/res)
+
+    height = map_info.height
+    width = map_info.width
+    ifValue = x0  > width
+    ifValue2 =  y0 > height
+    if ifValue or ifValue2 or x0 < 0 or y0 < 0:
+        return (None,None)
+    else :
+        return (x0, y0) 
 
 def quaternion_msg_from_yaw(yaw):
 	q = quaternion_from_euler(0.0, 0.0, yaw)
@@ -74,7 +82,7 @@ class Challenge:
     def __init__(self):
         global map_info
         global I2P
-        self.transition_grid = [None]*320*240
+        
         self.firstCall = True
         I2P = getI2P()
         self.bridge = CvBridge()
@@ -83,6 +91,7 @@ class Challenge:
         self.sub_odom = rospy.Subscriber("odom", Odometry, self.odom_callback)
         self.cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         self.pub_map = rospy.Publisher('map', OccupancyGrid, queue_size=1)
+        
 
         self.map = OccupancyGrid()
         self.map.header.frame_id = "odom"
@@ -98,20 +107,28 @@ class Challenge:
 		
 
     def getTransitionGrid(self):
+
         # Taille de l'image : lignes et colonnes
         (rows,cols) = self.image.shape
-        for x in range(rows) :
-            for y in range(cols) :
-                self.transition_grid[x+ y*rows] = getWorldPos(x,y)
+        self.transition_grid = [None]*rows*cols
+        for y in range(rows) :
+            for x in range(cols) :
+                self.transition_grid[x+ y*cols] = world_to_grid_coord( *getWorldPos(x,y), map_info=map_info )
+        # self.pub_transgrid.publish(self.transition_grid)
+        # rospy.loginfo(self.transition_grid[cols*200:cols*201])
         self.firstCall = False
 
     def updateAndPublishGrid(self):
-        (rows,cols) = self.image.shape        
-        for x in range(rows) :
-            for y in range(cols) :
-                if self.image[x,y] > 100 :
-                    (u,v) = self.transition_grid[x + y*rows]
-                    self.map.data[int(u+v*cols)] += 2
+        (rows,cols) = self.image.shape 
+              
+        for y in range(rows/2,rows) :
+            for x in range(cols) :
+                (u,v) = self.transition_grid[x + y*cols]
+                if u is not None :
+                    if self.image[y,x] > 200 :
+                       self.map.data[u+v)*map_info.width] = 100
+                    # else:
+                    #     self.map.data[u+v*map_info.width] = 0
         self.pub_map.publish(self.map)  
 
 
@@ -142,7 +159,6 @@ class Challenge:
             self.getTransitionGrid()
         else :
             #self.pub_map.publish(self.map)  
-
             self.updateAndPublishGrid()
           
 
