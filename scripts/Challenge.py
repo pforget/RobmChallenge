@@ -126,9 +126,9 @@ class Challenge:
                 (u,v) = self.transition_grid[x + y*cols]
                 if u is not None :
                     if self.image[y,x] > 200 :
-                       self.map.data[u+v)*map_info.width] = 100
+                       self.map.data[u+v*map_info.width] = 100
                     # else:
-                    #     self.map.data[u+v*map_info.width] = 0
+                    #    self.map.data[u+v*map_info.width] = 0
         self.pub_map.publish(self.map)  
 
 
