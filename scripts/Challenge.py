@@ -13,6 +13,7 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 import numpy as np
 from numpy import sin, cos, pi
 from skimage.draw import line
+from cv_bridge import CvBridge, CvBridgeError
 
 from geometry_msgs.msg import Twist, PoseStamped, Quaternion
 import math
@@ -55,11 +56,8 @@ def getI2P():
 def getWorldPos(u,v):
     point = [u,v,1]    
     result = np.dot(I2P, point)
-    result /= result[3]
-    return result
-
-def getTransitionGrid():
-
+    result /= result[2]
+    return result[0],result[1]
 
 def world_to_grid_coord(x, y, map_info):
 	res = map_info.resolution
@@ -76,13 +74,12 @@ class Challenge:
     def __init__(self):
         global map_info
         global I2P
-        global transition_grid
-
+        self.transition_grid = [None]*320*240
+        self.firstCall = True
         I2P = getI2P()
-        transition_grid = getTransitionGrid()
-        
+        self.bridge = CvBridge()
         self.sub_scan = rospy.Subscriber("scan", LaserScan, self.scan_callback)
-        self.image_sub = rospy.Subscriber("image_topic",Image,self.image_callback)
+        self.image_sub = rospy.Subscriber("camera/image",Image,self.image_callback)
         self.sub_odom = rospy.Subscriber("odom", Odometry, self.odom_callback)
         self.cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         self.pub_map = rospy.Publisher('map', OccupancyGrid, queue_size=1)
@@ -100,13 +97,33 @@ class Challenge:
         self.map.data = np.ones( map_info.height*map_info.width, dtype="int8" ) * 50
 		
 
+    def getTransitionGrid(self):
+        # Taille de l'image : lignes et colonnes
+        (rows,cols) = self.image.shape
+        for x in range(rows) :
+            for y in range(cols) :
+                self.transition_grid[x+ y*rows] = getWorldPos(x,y)
+        self.firstCall = False
+
+    def updateAndPublishGrid(self):
+        (rows,cols) = self.image.shape        
+        for x in range(rows) :
+            for y in range(cols) :
+                if self.image[x,y] > 100 :
+                    (u,v) = self.transition_grid[x + y*rows]
+                    self.map.data[int(u+v*cols)] += 2
+        self.pub_map.publish(self.map)  
+
+
+        
+
     def odom_callback(self, odom):
 		"""Callback du mise à jour de la vitesse désirée"""
 		self.odom = odom
 
 		# Publish speed command (in not zero for too long)
 		vel_msg = Twist()
-		vel_msg.linear.x = 0.5
+		vel_msg.linear.x = 0.001
 		vel_msg.angular.z = 0
 		self.cmd_pub.publish(vel_msg)
 
@@ -115,21 +132,21 @@ class Challenge:
         """Todo callback du laser"""
         self.scan = scan
 
-        self.pub_map.publish(self.map)
         
     def image_callback(self, data):
         try:
             self.image = self.bridge.imgmsg_to_cv2(data, "mono8")
         except CvBridgeError as e:
             print(e)
+        if self.firstCall :
+            self.getTransitionGrid()
+        else :
+            #self.pub_map.publish(self.map)  
 
-        # Taille de l'image : lignes et colonnes
-        (rows,cols) = self.image.shape
+            self.updateAndPublishGrid()
+          
 
-
-
-
-
+          
 def challenge_node():
     rospy.init_node('challenge')
     challenge = Challenge()
