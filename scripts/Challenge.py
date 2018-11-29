@@ -73,6 +73,12 @@ def world_to_grid_coord(x, y, map_info):
     else :
         return (x0, y0) 
 
+# Extract yaw from a Quaternion message
+def yaw_from_quaternion_msg( q ):
+	quat_array = [q.x, q.y, q.z, q.w]
+	yaw = euler_from_quaternion(quat_array)[2]
+	return yaw
+
 def quaternion_msg_from_yaw(yaw):
 	q = quaternion_from_euler(0.0, 0.0, yaw)
 	return Quaternion(*q)
@@ -97,8 +103,8 @@ class Challenge:
         self.map.header.frame_id = "odom"
         map_info = self.map.info
         map_info.resolution = 0.05
-        map_info.width = 384
-        map_info.height = 384
+        map_info.width = 1000
+        map_info.height = 1000
         map_info.origin.position.x = -0.5 * map_info.resolution * map_info.width
         map_info.origin.position.y = -0.5 * map_info.resolution * map_info.height
         map_info.origin.orientation = quaternion_msg_from_yaw(0.0)
@@ -118,21 +124,26 @@ class Challenge:
         # rospy.loginfo(self.transition_grid[cols*200:cols*201])
         self.firstCall = False
 
-    def updateAndPublishGrid(self):
+    def updateAndPublishGrid(self): 
+        x = self.odom.pose.pose.position.x
+        y = self.odom.pose.pose.position.y
+        theta = yaw_from_quaternion_msg(self.odom.pose.pose.orientation)
+        rospy.loginfo(theta)
+        cosT = math.cos(theta)
+        sinT = math.sin(theta)
+        x0,y0 = world_to_grid_coord(x,y, map_info)
         (rows,cols) = self.image.shape 
-              
-        for y in range(rows/2,rows) :
-            for x in range(cols) :
+        for y in range(rows/2,rows,4) :
+            for x in range(0,cols,4) :
                 (u,v) = self.transition_grid[x + y*cols]
                 if u is not None :
                     if self.image[y,x] > 200 :
-                       self.map.data[u+v*map_info.width] = 100
+                       yFinal = v*cosT + u*sinT + y0
+                       xFinal = v*sinT + u*cosT + x0
+                       self.map.data[int(xFinal+yFinal*map_info.width)] = 100
                     # else:
                     #    self.map.data[u+v*map_info.width] = 0
         self.pub_map.publish(self.map)  
-
-
-        
 
     def odom_callback(self, odom):
 		"""Callback du mise à jour de la vitesse désirée"""
@@ -140,7 +151,7 @@ class Challenge:
 
 		# Publish speed command (in not zero for too long)
 		vel_msg = Twist()
-		vel_msg.linear.x = 0.001
+		vel_msg.linear.x = 0.05
 		vel_msg.angular.z = 0
 		self.cmd_pub.publish(vel_msg)
 
